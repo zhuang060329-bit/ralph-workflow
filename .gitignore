@@ -1,0 +1,19 @@
+# 迴圈執行產物
+logs/
+.ralph-stop
+
+# 依賴與建置
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+
+# 環境
+.env
+.env.local
+
+# 系統
+.DS_Store
+Thumbs.db

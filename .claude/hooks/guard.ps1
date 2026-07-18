@@ -1,4 +1,4 @@
-# PreToolUse 守門 hook — 攔截無人值守情況下的危險指令
+﻿# PreToolUse 守門 hook — 攔截無人值守情況下的危險指令
 # 輸入:Claude Code 由 stdin 傳入 JSON,含 tool_name 與 tool_input.command
 # 輸出:exit 0 放行;exit 2 阻擋(stderr 內容會回饋給 agent)
 

@@ -1,4 +1,4 @@
-# 外層 Ralph 迴圈 — 無人值守開發驅動腳本
+﻿# 外層 Ralph 迴圈 — 無人值守開發驅動腳本
 # 用法:  .\ralph.ps1              使用預設上限
 #        .\ralph.ps1 -MaxRounds 50 -MaxCostUsd 20
 #

@@ -1,60 +1,62 @@
 # ralph-workflow
 
-無人值守開發工作流。外層 Ralph 迴圈驅動,內層視任務性質呼叫 subagent 或 Agent Team。
+English | [繁體中文](README.zh-TW.md)
 
-## 架構
+> **Archived (October 2026).** This skeleton was initialized but never completed a real task run. It is no longer maintained.
+>
+> **Known issue: on macOS and Linux the safety hook most likely does nothing.** `.claude/settings.json` runs `guard.ps1` through a command named `powershell`. macOS and Linux usually have no such command (Homebrew installs PowerShell as `pwsh`), and Claude Code treats a hook that fails to start as a non-blocking error, so the tool call goes ahead. `ralph.sh` also passes `--dangerously-skip-permissions`. The blocklist described under "Safety boundaries" therefore does not hold on those platforms. This conclusion comes from Claude Code's documented hook exit-code rules; it was not tested on a Mac. Replace the hook with a cross-platform script before reusing anything here.
+
+A skeleton for unattended development with Claude Code. An outer "Ralph" loop starts a fresh `claude -p` process every round; inside a round the agent either does the task itself, hands it to a one-off subagent, or spins up a short-lived Agent Team for cross-checking.
+
+## How a round works
 
 ```
-外層迴圈(ralph.ps1 / ralph.sh,唯一持續運行的東西)
-  └─ 每輪:全新 claude -p process,context 歸零
-       ├─ 讀 TASKS.md + PROGRESS.md 尾段 + git log 還原現況
-       ├─ 選一個任務 → 三選一執行:
-       │    · 單一低歧義 → 主 agent 自己做
-       │    · 獨立模組 / 修 bug → 一次性 subagent
-       │    · 多角度交叉驗證 → 短暫 Agent Team(2–4 人)
-       ├─ 獨立 agent 審查 → 只讀第一行「### 判定：PASS / FAIL」
-       │    · FAIL → 新 subagent 修復(附報告+diff)→ 重審(本輪內小迴圈,上限 3 次)
-       ├─ 更新 TASKS.md + 附加 PROGRESS.md + git commit
-       └─ 全部完成 → 建立 .ralph-stop 收工
+Outer loop (ralph.ps1 / ralph.sh — the only long-running process)
+  └─ each round: a new `claude -p` process, empty context
+       ├─ rebuild state from TASKS.md, the tail of PROGRESS.md and git log
+       ├─ pick one task and run it one of three ways:
+       │    · single, unambiguous task  → main agent
+       │    · isolated module / bug fix → one-off subagent
+       │    · needs several viewpoints  → short-lived Agent Team (2–4)
+       ├─ an independent agent reviews; only the first line is read:
+       │    "### 判定：PASS / FAIL"
+       │    · FAIL → new subagent fixes it (given report + diff) → re-review, max 3 times
+       ├─ update TASKS.md, append to PROGRESS.md, git commit
+       └─ all tasks done → create .ralph-stop
 ```
 
-## 檔案
+## Files
 
-| 檔案 | 用途 |
+| File | Purpose |
 |---|---|
-| `PROMPT.md` | 每輪固定餵給 Claude 的提示詞(工作流的真正核心) |
-| `TASKS.md` | 任務清單。`[ ]` 待處理 / `[~]` 進行中 / `[x]` 完成 / `[!]` 卡住 |
-| `PROGRESS.md` | append-only 執行日誌 |
-| `NEEDS_HUMAN.md` | 卡住或異常結束時自動產生,需要人工介入 |
-| `.ralph-stop` | 完工 sentinel,出現即停止迴圈 |
-| `ralph.ps1` / `ralph.sh` | 外層迴圈(Windows / macOS-Linux) |
-| `.claude/hooks/guard.ps1` | PreToolUse 守門,攔截危險指令 |
-| `logs/` | 每次執行的完整 JSON 輸出 |
+| `PROMPT.md` | The prompt fed to Claude every round — the actual core of the workflow |
+| `TASKS.md` | Task list. `[ ]` todo / `[~]` in progress / `[x]` done / `[!]` blocked |
+| `PROGRESS.md` | Append-only run log |
+| `NEEDS_HUMAN.md` | Written when the loop stops abnormally |
+| `.ralph-stop` | Completion sentinel; the loop exits when it exists |
+| `ralph.ps1` / `ralph.sh` | Outer loop for Windows / macOS and Linux |
+| `.claude/hooks/guard.ps1` | PreToolUse hook that blocks dangerous commands (Windows only in practice, see above) |
+| `logs/` | Full JSON output of every round (created at run time) |
 
-## 使用步驟
+## Usage
 
-1. **填任務**:編輯 `TASKS.md`,把範例任務換成真實任務(建議第一項就是「決定技術棧並初始化骨架」)。
-2. **切分支**:`git checkout ralph-auto`(迴圈拒絕在其他分支執行)。
-3. **啟動**:
+1. Replace the sample tasks in `TASKS.md` with real ones.
+2. `git checkout ralph-auto` — the loop refuses to run on any other branch.
+3. Start it with a small budget first:
    ```powershell
    .\ralph.ps1 -MaxRounds 50 -MaxCostUsd 20
    ```
-   建議首次跑先設小上限觀察行為,確認正常後再放大。
-4. **結束後**:人工 review `ralph-auto` 分支的完整 diff,自行決定是否 merge 或 push。
-   迴圈本身**不會**自動 push / merge。
+4. Review the full diff of `ralph-auto` yourself. The loop never pushes or merges.
 
-## 安全邊界
+## Safety boundaries (as designed)
 
-- 只在 `ralph-auto` 分支工作,不碰 main。
-- 不自動 push / merge(不可逆操作留給人工)。
-- `guard.ps1` 攔截 `git push`、`git reset --hard`、`rm -rf`、跨目錄操作等。
-- 雙重停止條件:`.ralph-stop`(正常完工)+ 輪次上限 + 花費上限(防失控)。
-- 異常結束會寫 `NEEDS_HUMAN.md` 並發終端鐘聲。
+- Works only on the `ralph-auto` branch.
+- Never pushes or merges; irreversible steps are left to a human.
+- `guard.ps1` blocks `git push`, `git reset --hard`, `rm -rf`, operations outside the project, and similar commands.
+- Two stop conditions: `.ralph-stop` for normal completion, plus round and cost limits.
+- An abnormal stop writes `NEEDS_HUMAN.md` and rings the terminal bell.
 
-## 已知限制
+## Limits
 
-- Agent Teams 為實驗性功能,需 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`(已寫入 `.claude/settings.json`)。
-  官方文件本身不建議 Agent Teams 長時間無人值守,因此本架構只在需要多角度驗證時短暫使用,
-  由外層 Ralph 迴圈承擔無人值守的職責。
-- 每輪 context 歸零是刻意設計:換來的代價是無法 resume 上一輪的 subagent,
-  因此修 bug 採「新 subagent + 完整上下文」而非「原 agent 續談」。
+- Agent Teams is experimental and needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (set in `.claude/settings.json`). Its documentation advises against long unattended runs, so this design uses teams only briefly and leaves the unattended part to the outer loop.
+- Every round starts with empty context on purpose. The cost is that a subagent from an earlier round cannot be resumed, so fixes always go to a new subagent with full context.
